@@ -82,19 +82,6 @@ struct converter_visitor
     }
 };
 
-template <typename T>
-struct unwrap_visitor
-    : public boost::static_visitor<T> {
-    T operator()(const T& obj) const {
-        return obj;
-    }
-
-    T operator()(const converter<T>&) const {
-        // TODO: add nice exception derived from std::exception
-        throw "Cannot unwrap this shit";
-    }
-};
-
 template <typename... Types>
 decltype(auto) build_visitors(
     const std::string& name,
@@ -129,30 +116,6 @@ decltype(auto) wrap_variant(
         });
 }
 
-template <typename... Types>
-decltype(auto) build_unwrap_visitors(
-    const std::tuple<converter_variant<Types>...>&) {
-    return std::make_tuple(unwrap_visitor<Types>{}...);
-}
-
-template <typename... Types, size_t... index>
-decltype(auto) apply_unwrap_impl(
-    const std::tuple<converter_variant<Types>...>& converters,
-    const std::tuple<unwrap_visitor<Types>...>& visitors,
-    std::index_sequence<index...>) {
-    return std::make_tuple(boost::apply_visitor(std::get<index>(visitors), std::get<index>(converters))...);
-}
-
-template <typename... Types>
-decltype(auto) apply_unwrap(
-    const std::tuple<converter_variant<Types>...>& converters,
-    const std::tuple<unwrap_visitor<Types>...>& visitors) {
-    constexpr auto converters_size = std::tuple_size<std::decay_t<decltype(converters)> >::value;
-    constexpr auto visitors_size = std::tuple_size<std::decay_t<decltype(visitors)> >::value;
-    static_assert(converters_size == visitors_size, "converters size doesn't matches visitors size!");
-    return apply_unwrap_impl(converters, visitors, std::make_index_sequence<converters_size>());
-}
-
 template <typename... Types, size_t... index>
 decltype(auto) unwrap_variant_impl(
     const std::tuple<converter_variant<Types>... >& converters,
@@ -164,10 +127,7 @@ template <typename... Types>
 decltype(auto) unwrap_variant(
     const std::tuple<converter_variant<Types>... >& converters) {
     constexpr auto size = std::tuple_size<std::decay_t<decltype(converters)> >::value;
-    //return unwrap_variant_impl(converters, std::make_index_sequence<size>());
-    //return for_each(converters, [] (auto converter) { return boost::get<0>(converter); });
-    auto visitors = build_unwrap_visitors(converters);
-    return apply_unwrap(converters, visitors);
+    return unwrap_variant_impl(converters, std::make_index_sequence<size>());
 }
 
 template <typename... Types>
