@@ -52,7 +52,7 @@ struct converter {
     converter(
         const std::string& name,
         const std::function<T(std::string&)>& fn)
-        : name (name)
+        : name(name)
         , fn(fn) {}
 };
 
@@ -112,8 +112,8 @@ template <typename... Types>
 constexpr decltype(auto) wrap_variant(
     std::tuple<converter<Types>...> converters) {
     return for_each(converters, [] (auto converter) {
-            return converter_variant<typename decltype(converter)::type>{converter};
-        });
+        return converter_variant<typename decltype(converter)::type>{converter};
+    });
 }
 
 template <typename... Types, size_t... index>
@@ -132,31 +132,31 @@ constexpr decltype(auto) unwrap_variant(
 
 template <typename... Types>
 decltype(auto) read_object_impl(
-    std::tuple<converter_variant<Types>...> converters,
-    std::string& source) {
+    std::string& source,
+    std::tuple<converter_variant<Types>...> converters) {
     if (source.empty())
         return converters;
-    else {
-        auto assign_pos = source.find_first_of('=');
-        // TODO: add name trimming
-        auto name = source.substr(0, assign_pos);
-        name = name.substr(name.find_first_not_of(" \t\r\n"));
-        name = name.substr(0, name.find_first_of(" \t\r\n"));
-        source.erase(0, assign_pos + 1);
-        auto visitors = build_visitors(name, source, converters);
-        return read_object_impl(apply_visitors(converters, visitors), source);
-    }
+
+    auto assign_pos = source.find_first_of('=');
+    // TODO: add name trimming
+    auto name = source.substr(0, assign_pos);
+    name = name.substr(name.find_first_not_of(" \t\r\n"));
+    name = name.substr(0, name.find_first_of(" \t\r\n"));
+    source.erase(0, assign_pos + 1);
+
+    auto visitors = build_visitors(name, source, converters);
+    return read_object_impl(source, apply_visitors(converters, visitors));
 }
 
 template <typename T, typename Factory, typename... Args>
 T read_object(
-    std::tuple<converter<Args>... >&& properties,
+    std::string& source,
     Factory&& factory,
-    std::string& source) {
-    auto variant = wrap_variant(properties);
-    auto variant_object = read_object_impl(variant, source);
-    auto unwrapped = unwrap_variant(variant_object);
-    return apply(std::move(factory), unwrapped);
+    std::tuple<converter<Args>... >&& properties) {
+    auto unwrapped = unwrap_variant(
+        read_object_impl(source,
+            wrap_variant(properties)));
+    return apply(factory, unwrapped);
 }
 
 /*
@@ -166,11 +166,11 @@ T read_object(
  *     list_of_numbers = {1, 2, 3}
  * }
  *
- * read_object(std::make_tuple(
+ * read_object(source, factory, std::make_tuple(
  *  converter<std::string>{"name", read_string},
  *  converter<int>{"number", read_int},
- *  converter<std::vector<int>>{"list_of_numbers", std::bind(read_list, read_int, _1)}),
- *  source);
+ *  converter<std::vector<int>>{"list_of_numbers", std::bind(read_list, read_int, _1)})
+ *  );
  *
  */
 

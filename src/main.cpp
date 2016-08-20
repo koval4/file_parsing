@@ -8,8 +8,13 @@ struct Foo {
 
 int main() {
     std::string source = "name = foo, relations = bad";
-    auto obj = read_object<Foo>(
-    std::make_tuple (
+    auto obj = read_object<Foo>(source,
+    [] (std::string name, std::string relations) {
+        Foo foo{};
+        foo.name = name;
+        foo.relations = relations;
+        return foo;
+    }, std::make_tuple (
         converter<std::string>{
             "name", [] (std::string & str) {
                             auto name = str.substr(0, str.find_first_of(','));
@@ -27,12 +32,7 @@ int main() {
                             return name;
             }
         }
-    ), [] (std::string name, std::string relations) {
-        Foo foo{};
-        foo.name = name;
-        foo.relations = relations;
-        return foo;
-    }, source);
+    ));
     std::cout << obj.name << " | " << obj.relations << std::endl;
     return 0;
 }
