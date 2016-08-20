@@ -29,12 +29,12 @@ decltype(auto) apply(F&& func, T&& tuple) {
 }
 
 template <typename F, typename T, size_t... index>
-decltype(auto) for_each_impl(T&& tuple, F&& fn, std::index_sequence<index...>) {
+constexpr decltype(auto) for_each_impl(T&& tuple, F&& fn, std::index_sequence<index...>) {
     return std::make_tuple(fn(std::get<index>(tuple))...);
 }
 
 template <typename F, typename... T>
-decltype(auto) for_each(const std::tuple<T...>& tuple, F&& fn) {
+constexpr decltype(auto) for_each(const std::tuple<T...>& tuple, F&& fn) {
     constexpr auto size = std::tuple_size<std::decay_t<decltype(tuple)> >::value;
     return for_each_impl(
         tuple,
@@ -83,7 +83,7 @@ struct converter_visitor
 };
 
 template <typename... Types>
-decltype(auto) build_visitors(
+constexpr decltype(auto) build_visitors(
     const std::string& name,
     std::string& source,
     const std::tuple<converter_variant<Types>... >&) {
@@ -91,7 +91,7 @@ decltype(auto) build_visitors(
 }
 
 template <typename... Types, size_t... index>
-decltype(auto) apply_visitors_impl(
+constexpr decltype(auto) apply_visitors_impl(
     const std::tuple<converter_variant<Types>... >& converters,
     std::tuple<converter_visitor<Types>...>& visitors,
     std::index_sequence<index...>) {
@@ -99,7 +99,7 @@ decltype(auto) apply_visitors_impl(
 }
 
 template <typename... Types>
-decltype(auto) apply_visitors(
+constexpr decltype(auto) apply_visitors(
     const std::tuple<converter_variant<Types>... >& converters,
     std::tuple<converter_visitor<Types>...>& visitors) {
     constexpr auto converters_size = std::tuple_size<std::decay_t<decltype(converters)> >::value;
@@ -109,33 +109,33 @@ decltype(auto) apply_visitors(
 }
 
 template <typename... Types>
-decltype(auto) wrap_variant(
-    const std::tuple<converter<Types>...>& converters) {
+constexpr decltype(auto) wrap_variant(
+    std::tuple<converter<Types>...> converters) {
     return for_each(converters, [] (auto converter) {
             return converter_variant<typename decltype(converter)::type>{converter};
         });
 }
 
 template <typename... Types, size_t... index>
-decltype(auto) unwrap_variant_impl(
-    const std::tuple<converter_variant<Types>... >& converters,
+constexpr decltype(auto) unwrap_variant_impl(
+    std::tuple<converter_variant<Types>... > converters,
     std::index_sequence<index...>) {
     return std::make_tuple(boost::get<Types>(std::get<index>(converters))...);
 }
 
 template <typename... Types>
-decltype(auto) unwrap_variant(
-    const std::tuple<converter_variant<Types>... >& converters) {
+constexpr decltype(auto) unwrap_variant(
+    std::tuple<converter_variant<Types>... > converters) {
     constexpr auto size = std::tuple_size<std::decay_t<decltype(converters)> >::value;
     return unwrap_variant_impl(converters, std::make_index_sequence<size>());
 }
 
 template <typename... Types>
 decltype(auto) read_object_impl(
-    std::tuple<converter_variant<Types>...>&& converters,
+    std::tuple<converter_variant<Types>...> converters,
     std::string& source) {
     if (source.empty())
-        return std::move(converters);
+        return converters;
     else {
         auto assign_pos = source.find_first_of('=');
         // TODO: add name trimming
@@ -153,10 +153,10 @@ T read_object(
     std::tuple<converter<Args>... >&& properties,
     Factory&& factory,
     std::string& source) {
-    return apply(std::move(factory), unwrap_variant(read_object_impl(
-        wrap_variant(properties),
-        source
-    )));
+    auto variant = wrap_variant(properties);
+    auto variant_object = read_object_impl(variant, source);
+    auto unwrapped = unwrap_variant(variant_object);
+    return apply(std::move(factory), unwrapped);
 }
 
 /*
