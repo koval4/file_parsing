@@ -48,12 +48,6 @@ struct converter {
     using type = T;
     std::string name;
     std::function<T(std::string&)> fn;
-
-    converter(
-        const std::string& name,
-        const std::function<T(std::string&)>& fn)
-        : name(name)
-        , fn(fn) {}
 };
 
 template <typename T>
@@ -76,9 +70,14 @@ struct converter_visitor
     }
 
     converter_variant<T> operator()(const converter<T>& converter) {
-        if (converter.name == name)
-            return converter.fn(source);
-        else return converter;
+        if (converter.name == name) {
+            auto result = converter.fn(source);
+            auto separator = source.find_first_of(',');
+            auto end = source.find_first_of('}');
+            if (separator != std::string::npos && separator < end)
+                source.erase(0, separator + 1);
+            return result;
+        } else return converter;
     }
 };
 
@@ -134,7 +133,8 @@ template <typename... Types>
 decltype(auto) read_object_impl(
     std::string& source,
     std::tuple<converter_variant<Types>...> converters) {
-    if (source.empty())
+    source.erase(0, source.find_first_not_of(" \r\n\t"));
+    if (source.front() == '}')
         return converters;
 
     auto assign_pos = source.find_first_of('=');
@@ -153,10 +153,59 @@ T read_object(
     std::string& source,
     Factory&& factory,
     std::tuple<converter<Args>... >&& properties) {
+    source.erase(0, source.find_first_of('{') + 1);
     auto unwrapped = unwrap_variant(
         read_object_impl(source,
             wrap_variant(properties)));
     return apply(factory, unwrapped);
+}
+
+template <typename T>
+std::vector<T> read_list(
+    std::string& source,
+    std::function<T(std::string&)> converter) {
+    std::vector<T> elements;
+
+    auto start = source.find_first_of('{');
+    auto end = source.find_first_of('}');
+    source.erase(0, start + 1);
+
+    do {
+        source.erase(0, source.find_first_not_of(" \n\t\r"));
+        if (source.front() == '}')
+            break;
+        elements.push_back(converter(source));
+        auto separator = source.find_first_of(',');
+        end = source.find_first_of('}');
+        if (separator != std::string::npos && separator < end)
+            source.erase(0, separator + 1);
+    } while (true);
+
+    source.erase(0, end + 1);
+
+    return elements;
+}
+
+std::string read_string(std::string& source) {
+    auto start = source.find_first_of('"');
+    if (start == std::string::npos)
+        throw "String start not found";
+    auto end = source.find_first_of('"', start + 1);
+    if (end == std::string::npos)
+        throw "String end not found";
+    auto substr = source.substr(start + 1, end - start - 1);
+    source.erase(0, end + 1);
+    return substr;
+}
+
+int read_int(std::string& source) {
+    auto pos = source.find_first_not_of(" \r\n\t");
+    source.erase(0, pos);
+    size_t end = 0;
+    while (isdigit(source[end])) end++;
+    auto number = std::stoi(source.substr(0, end));
+    source.erase(0, end);
+    return number;
 }
 
 /*
